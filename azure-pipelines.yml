@@ -1,19 +1,91 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
-- master
+- main
 
 pool:
   vmImage: ubuntu-latest
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+# Build Stage
+stages:
+  - stage: Build
+    jobs:
+      - job: BuildJob
+        steps:
+          # Sync code from repository
+          - script: echo Syncing the code!
+            displayName: 'Sync Code'
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+          # Print build-related variables
+          - bash: echo $(Agent.BuildDirectory) is the BuildDirectory
+            displayName: 'Print BuildDirectory'
+
+          - bash: echo $(Build.ArtifactStagingDirectory) is the ArtifactStagingDirectory
+            displayName: 'Print ArtifactStagingDirectory'
+
+          # Copy YAML and Terraform files to the ArtifactStagingDirectory
+          - task: CopyFiles@2
+            inputs:
+              SourceFolder: '$(System.DefaultWorkingDirectory)'
+              Contents: |
+                **/*.yml
+                **/*.tf
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+            displayName: 'Copy .yml and .tf files'
+
+          # Publish build artifacts to be used in release pipeline
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'
+            displayName: 'Publish Artifacts'
+
+  # Test Stage
+  - stage: Test
+    dependsOn: Build
+    jobs:
+      - job: TestJob
+        steps:
+          # Running test scripts or tests
+          - script: echo Running tests!
+            displayName: 'Test Code'
+
+  # Deployment to Dev Environment
+  - stage: DevDeploy
+    dependsOn: Test
+    jobs:
+      - deployment: DevDeployJob
+        environment: Dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: echo Deploying to Dev Environment
+                  displayName: 'Deploy to Dev'
+
+  # Deployment to QA Environment
+  - stage: QADeploy
+    dependsOn: DevDeploy
+    jobs:
+      - deployment: QADeployJob
+        environment: QA
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: echo Deploying to QA Environment
+                  displayName: 'Deploy to QA'
+
+  # Deployment to Prod Environment
+  - stage: ProdDeploy
+    dependsOn:
+      - DevDeploy
+      - QADeploy
+    jobs:
+      - deployment: ProdDeployJob
+        environment: Prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: echo Deploying to Prod Environment
+                  displayName: 'Deploy to Prod'
